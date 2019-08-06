@@ -1,24 +1,22 @@
 package com.getjenny.manaus.commands
 
-import com.getjenny.manaus.util._
-import com.getjenny.manaus._
-import breeze.io.{CSVReader, CSVWriter}
-import java.io.{File, FileReader, FileWriter}
-
-import scala.io.Source
-import org.elasticsearch.action.search._
-import org.elasticsearch.client.transport.TransportClient
-import org.elasticsearch.common.unit.TimeValue
-import org.elasticsearch.index.query.{MatchAllQueryBuilder, QueryBuilders}
-import org.elasticsearch.script._
-import org.elasticsearch.script.Script
-
-import scala.collection.JavaConverters._
+import java.io.{File, FileReader}
 import java.util.Collections
 
+import breeze.io.CSVReader
+import com.getjenny.manaus._
 import com.typesafe.scalalogging.LazyLogging
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest
+import org.elasticsearch.action.search._
+import org.elasticsearch.client.{RequestOptions, RestHighLevelClient}
+import org.elasticsearch.common.unit.TimeValue
+import org.elasticsearch.index.query.{MatchAllQueryBuilder, QueryBuilders}
+import org.elasticsearch.script.{Script, _}
+import org.elasticsearch.search.builder.SearchSourceBuilder
 
+import scala.collection.JavaConverters._
 import scala.collection.immutable.List
+import scala.io.Source
 
 
 object CommandsUtils extends LazyLogging {
@@ -102,29 +100,35 @@ object CommandsUtils extends LazyLogging {
   }
 
   def get_indices(elastic_client : ElasticClient): List[String] = {
-    val indices_res = elastic_client.get_client()
-      .admin.cluster.prepareState.get.getState.getMetaData.getIndices.asScala
-    indices_res.map(x => x.key).toList
+    val clusterHealthReq = new ClusterHealthRequest()
+    clusterHealthReq.level(ClusterHealthRequest.Level.INDICES)
+    val clusterHealthRes = elastic_client.httpClient.cluster().health(clusterHealthReq, RequestOptions.DEFAULT)
+    clusterHealthRes.getIndices.asScala.map { case (k, _) => k}.toList
   }
 
   def search(elastic_client : ElasticClient):
   Stream[(String, String)] = {
 
-    elastic_client.open_client()
-    val client: TransportClient = elastic_client.get_client()
+    elastic_client.openHttp()
+    val client: RestHighLevelClient = elastic_client.httpClient
     val qb: MatchAllQueryBuilder = QueryBuilders.matchAllQuery()
 
-    var scrollResp : SearchResponse = client.prepareSearch(elastic_client.index_name)
-      .setTypes(elastic_client.type_name)
-      .setQuery(qb)
-      .setScroll(new TimeValue(60000))
-      .setSize(10000).get()
+    val sourceBuilder = new SearchSourceBuilder()
+      .query(qb)
+      .size(10000)
+
+    val searchRequest: SearchRequest = new SearchRequest(elastic_client.indexName)
+      .source(sourceBuilder)
+      .scroll(new TimeValue(60000))
+
+    var scrollResp: SearchResponse = client.search(searchRequest, RequestOptions.DEFAULT)
 
     val documents: Stream[(String, String)] = Stream.continually({
       val hits = scrollResp.getHits.getHits
       val scrollId = scrollResp.getScrollId
-      scrollResp = client.prepareSearchScroll(scrollId)
-        .setScroll(new TimeValue(60000)).execute().actionGet()
+      val scrollRequest = new SearchScrollRequest(scrollId)
+          .scroll(new TimeValue(60000))
+      scrollResp = client.scroll(scrollRequest, RequestOptions.DEFAULT)
       hits
     }).takeWhile(_.length != 0).flatten.map(hit => {
       val id = hit.getId
@@ -141,8 +145,8 @@ object CommandsUtils extends LazyLogging {
 
   def searchAndGetTokens(field_name: String, elastic_client: ElasticClient): Stream[(List[String], String)] = {
 
-    elastic_client.open_client()
-    val client: TransportClient = elastic_client.get_client()
+    elastic_client.openHttp()
+    val client: RestHighLevelClient = elastic_client.httpClient
     val qb: MatchAllQueryBuilder = QueryBuilders.matchAllQuery()
 
     val script_text = "doc[\"" + field_name + "\"].values"
@@ -153,18 +157,23 @@ object CommandsUtils extends LazyLogging {
       script_text,
       Collections.emptyMap())
 
-    var scrollResp : SearchResponse = client.prepareSearch(elastic_client.index_name)
-      .setTypes(elastic_client.type_name)
-      .setQuery(qb)
-      .addScriptField("analyzed_tokens", script)
-      .setScroll(new TimeValue(60000))
-      .setSize(100).get()
+    val sourceBuilder: SearchSourceBuilder = new SearchSourceBuilder()
+      .query(qb)
+      .scriptField("analyzed_tokens", script)
+      .size(100)
+
+    val searchRequest: SearchRequest = new SearchRequest(elastic_client.indexName)
+      .source(sourceBuilder)
+      .scroll(new TimeValue(60000))
+
+    var scrollResp: SearchResponse = client.search(searchRequest, RequestOptions.DEFAULT)
 
     val documents: Stream[(List[String], String)] = Stream.continually({
       val hits = scrollResp.getHits.getHits
       val scrollId = scrollResp.getScrollId
-      scrollResp = client.prepareSearchScroll(scrollId)
-        .setScroll(new TimeValue(60000)).execute().actionGet()
+      val scrollRequest = new SearchScrollRequest(scrollId)
+          .scroll(new TimeValue(60000))
+      scrollResp = client.scroll(scrollRequest, RequestOptions.DEFAULT)
       hits
     }).takeWhile(_.length != 0).flatten.map(hit => {
       val id = hit.getId

@@ -4,20 +4,15 @@ package com.getjenny.manaus.commands
   * Created by angelo on 03/07/17.
   */
 
-import com.getjenny.manaus.util._
-import com.getjenny.manaus._
-import breeze.io.{CSVReader, CSVWriter}
-import java.io.{File, FileReader, FileWriter}
-import scala.util.matching.Regex
-import com.getjenny.manaus.commands.UploadKeywords.logger
+import java.io.{File, FileWriter}
+
+import breeze.io.CSVWriter
 import com.typesafe.scalalogging.LazyLogging
 import org.elasticsearch.index.IndexNotFoundException
 import scopt.OptionParser
 
-import scala.concurrent.duration._
-import scala.io.Source
-import scala.collection.SeqView
 import scala.concurrent.Await
+import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 
 object ContinuousKeywordsUpdateAllIndexes extends LazyLogging {
@@ -39,7 +34,13 @@ object ContinuousKeywordsUpdateAllIndexes extends LazyLogging {
                              field_name: String = "question.base",
                              cluster_name: String = "starchat",
                              ignore_cluster_name: Boolean = true,
-                             host_map: Map[String, Int] = Map("localhost" -> 9300)
+                             host_map: Map[String, Int] = Map("localhost" -> 9200),
+                             host_proto: String = "https",
+                             keystore_path: String = "/tls/certs/keystore.p12",
+                             keystore_password: String = "N7WQdx20",
+                             cert_format: String = "pkcs12",
+                             disable_host_validation: Boolean = true,
+                             elasticsearch_authentication: String = "ZWxhc3RpYzpyUmw0Q0NFUGpZZ2s5YWd3"
                            )
 
   def doContinuousKeywordsUpdate(params: Params): Unit = {
@@ -48,17 +49,20 @@ object ContinuousKeywordsUpdateAllIndexes extends LazyLogging {
     // Load the prior occurrences
     val cmd_utils = CommandsUtils
 
-    val system_es_client = ElasticClientKB(type_name = params.type_name,
-      query_min_threshold = params.query_min_threshold, index_name = "",
-      cluster_name = params.cluster_name, ignore_cluster_name = params.ignore_cluster_name,
-      index_language = "", host_map = params.host_map)
+    val systemEsClient = ElasticClientKB(indexSuffix = params.type_name, queryMinThreshold = params.query_min_threshold,
+                           indexName = "", clusterName = params.cluster_name,
+                           ignoreClusterName = params.ignore_cluster_name, indexLanguage = "",
+                           hostMap = params.host_map, keystorePath = params.keystore_path,
+                           keystorePassword = params.keystore_password, hostProto = params.host_proto,
+                           certFormat = params.cert_format, disableHostValidation = params.disable_host_validation,
+                           elasticsearchAuthentication = params.elasticsearch_authentication)
 
     val index_language_regex_expr = """^(?:(index)_([a-z]+)_([A-Za-z0-9_]+)\.(""" + params.type_name + """))$"""
     val index_language_regex = index_language_regex_expr.r
 
     do {
       //Get all the indexes
-      val indexes = cmd_utils.get_indices(system_es_client).map(index_item => {
+      val indexes = cmd_utils.get_indices(systemEsClient).map(index_item => {
         logger.debug("Index: " + index_item)
         // extract language from index name
         val index_components = index_item match {
@@ -84,13 +88,16 @@ object ContinuousKeywordsUpdateAllIndexes extends LazyLogging {
         val priorOccurrences = cmd_utils.readPriorOccurrencesMap(word_frequencies)
 
         // BEGIN get data from ES
-        val elastic_client = ElasticClientKB(type_name = params.type_name,
-          query_min_threshold = params.query_min_threshold, index_name = index._2,
-          cluster_name = params.cluster_name, ignore_cluster_name = params.ignore_cluster_name,
-          index_language = index._1, host_map = params.host_map)
+        val elasticClient = ElasticClientKB(indexSuffix = params.type_name, queryMinThreshold = params.query_min_threshold,
+                           indexName = index._2, clusterName = params.cluster_name,
+                           ignoreClusterName = params.ignore_cluster_name, indexLanguage = index._1,
+                           hostMap = params.host_map, keystorePath = params.keystore_path,
+                           keystorePassword = params.keystore_password, hostProto = params.host_proto,
+                           certFormat = params.cert_format, disableHostValidation = params.disable_host_validation,
+                           elasticsearchAuthentication = params.elasticsearch_authentication)
 
         val search_hits = try {
-          cmd_utils.searchAndGetTokens(elastic_client = elastic_client, field_name = params.field_name)
+          cmd_utils.searchAndGetTokens(elastic_client = elasticClient, field_name = params.field_name)
         } catch {
           case e: IndexNotFoundException =>
             val message = "The index was not found or was not yet initialized: " + e.getMessage
@@ -177,7 +184,7 @@ object ContinuousKeywordsUpdateAllIndexes extends LazyLogging {
           val document = KBDocumentUpdate(question_scored_terms = Option {
             item._2
           })
-          val result = elastic_client.updateDocument(id = item._1, document = document, elastic_client = elastic_client)
+          val result = elasticClient.updateDocument(id = item._1, document = document, elasticClient = elasticClient)
           val result_try: Try[Option[UpdateDocumentResult]] = Await.ready(result, 60.seconds).value.get
           result_try match {
             case Success(t) =>
@@ -188,7 +195,7 @@ object ContinuousKeywordsUpdateAllIndexes extends LazyLogging {
         })
         keywords_file_writer.close()
         token_data_file_writer.close()
-        elastic_client.close_client(elastic_client.client)
+        elasticClient.closeHttp(elasticClient.httpClient)
         // END upload data on ES
       })
 
@@ -243,8 +250,8 @@ object ContinuousKeywordsUpdateAllIndexes extends LazyLogging {
         .action((x, c) => c.copy(type_name = x))
       opt[String]("field_name")
         .text(s"the field_name" +
-          s"  default: ${defaultParams.type_name}")
-        .action((x, c) => c.copy(type_name = x))
+          s"  default: ${defaultParams.field_name}")
+        .action((x, c) => c.copy(field_name = x))
       opt[Double]("query_min_threshold")
         .text(s"a min threshold for search" +
           s"  default: ${defaultParams.query_min_threshold}")
@@ -261,6 +268,30 @@ object ContinuousKeywordsUpdateAllIndexes extends LazyLogging {
         .text(s"a list of ElasticSearch nodes" +
           s"  default: ${defaultParams.host_map}")
         .action((x, c) => c.copy(host_map = x))
+      opt[String]("host_proto")
+        .text(s"the host protocol: http/https" +
+          s"  default: ${defaultParams.host_proto}")
+        .action((x, c) => c.copy(host_proto = x))
+      opt[String]("keystore_path")
+        .text(s"the path to keystore" +
+          s"  default: ${defaultParams.keystore_path}")
+        .action((x, c) => c.copy(keystore_path = x))
+      opt[String]("keystore_password")
+        .text(s"the password for the keystore" +
+          s"  default: ${defaultParams.keystore_password}")
+        .action((x, c) => c.copy(keystore_password = x))
+      opt[String]("cert_format")
+        .text(s"the certificate format" +
+          s"  default: ${defaultParams.cert_format}")
+        .action((x, c) => c.copy(cert_format = x))
+      opt[Boolean]("disable_host_validation")
+        .text(s"disable host validation" +
+          s"  default: ${defaultParams.disable_host_validation}")
+        .action((x, c) => c.copy(disable_host_validation = x))
+      opt[String]("elasticsearch_authentication")
+        .text(s"the authentication for elasticsearch" +
+          s"  default: ${defaultParams.elasticsearch_authentication}")
+        .action((x, c) => c.copy(elasticsearch_authentication = x))
     }
 
     parser.parse(args, defaultParams) match {

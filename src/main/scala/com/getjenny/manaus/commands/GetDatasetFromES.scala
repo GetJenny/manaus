@@ -3,31 +3,39 @@ package com.getjenny.manaus.commands
 import java.io.{File, FileWriter}
 
 import breeze.io.CSVWriter
-import scopt.OptionParser
-
 import com.typesafe.scalalogging.LazyLogging
+import scopt.OptionParser
 
 object GetDatasetFromES extends LazyLogging {
 
   private case class Params(
-    output_file: String = "",
-    type_name: String = "question",
-    query_min_threshold: Double = 0.0,
-    index_name: String = "index_english_0.question",
-    cluster_name: String = "starchat",
-    ignore_cluster_name: Boolean = true,
-    index_language: String = "english",
-    host_map: Map[String, Int] = Map("localhost" -> 9300)
-  )
+                             output_file: String = "",
+                             type_name: String = "question",
+                             query_min_threshold: Double = 0.0,
+                             index_name: String = "index_english_0.question",
+                             cluster_name: String = "starchat",
+                             ignore_cluster_name: Boolean = true,
+                             index_language: String = "english",
+                             host_map: Map[String, Int] = Map("localhost" -> 9200),
+                             host_proto: String = "https",
+                             keystore_path: String = "/tls/certs/keystore.p12",
+                             keystore_password: String = "N7WQdx20",
+                             cert_format: String = "pkcs12",
+                             disable_host_validation: Boolean = true,
+                             elasticsearch_authentication: String = ""
+                           )
 
   def doDataSerialization(params: Params): Unit = {
 
     val cmd_utils = CommandsUtils
 
-    val elastic_client = ElasticClientKB(type_name=params.type_name,
-      query_min_threshold = params.query_min_threshold, index_name = params.index_name,
-      cluster_name = params.cluster_name, ignore_cluster_name = params.ignore_cluster_name,
-      index_language = params.index_name, host_map = params.host_map)
+    val elastic_client = ElasticClientKB(indexSuffix=params.type_name,
+      queryMinThreshold = params.query_min_threshold, indexName = params.index_name,
+      clusterName = params.cluster_name, ignoreClusterName = params.ignore_cluster_name,
+      indexLanguage = params.index_name, hostMap = params.host_map, keystorePath = params.keystore_path,
+      keystorePassword = params.keystore_password, hostProto = params.host_proto,
+      certFormat = params.cert_format, disableHostValidation = params.disable_host_validation,
+      elasticsearchAuthentication = params.elasticsearch_authentication)
 
     val search_hits = cmd_utils.search(elastic_client)
 
@@ -86,6 +94,30 @@ object GetDatasetFromES extends LazyLogging {
         .text(s"a list of ElasticSearch nodes" +
         s"  default: ${defaultParams.host_map}")
         .action((x, c) => c.copy(host_map = x))
+      opt[String]("host_proto")
+        .text(s"the host protocol: http/https" +
+          s"  default: ${defaultParams.host_proto}")
+        .action((x, c) => c.copy(host_proto = x))
+      opt[String]("keystore_path")
+        .text(s"the path to keystore" +
+          s"  default: ${defaultParams.keystore_path}")
+        .action((x, c) => c.copy(keystore_path = x))
+      opt[String]("keystore_password")
+        .text(s"the password for the keystore" +
+          s"  default: ${defaultParams.keystore_password}")
+        .action((x, c) => c.copy(keystore_password = x))
+      opt[String]("cert_format")
+        .text(s"the certificate format" +
+          s"  default: ${defaultParams.cert_format}")
+        .action((x, c) => c.copy(cert_format = x))
+      opt[Boolean]("disable_host_validation")
+        .text(s"disable host validation" +
+          s"  default: ${defaultParams.disable_host_validation}")
+        .action((x, c) => c.copy(disable_host_validation = x))
+      opt[String]("elasticsearch_authentication")
+        .text(s"the authentication for elasticsearch" +
+          s"  default: ${defaultParams.elasticsearch_authentication}")
+        .action((x, c) => c.copy(elasticsearch_authentication = x))
     }
 
     parser.parse(args, defaultParams) match {

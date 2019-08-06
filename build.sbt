@@ -9,17 +9,20 @@ resolvers ++= Seq("Typesafe Repository" at "http://repo.typesafe.com/typesafe/re
   Resolver.bintrayRepo("hseeberger", "maven"))
 
 libraryDependencies ++= {
-  val ESClientVersion   = "6.1.0"
+  val ESClientVersion   = "7.2.0"
   Seq(
     "org.scalatest" %% "scalatest" % "3.0.1" % "test",
     "org.scalanlp" %% "breeze" % "0.13",
     "org.scalanlp" %% "breeze-natives" % "0.13",
-    "org.elasticsearch" % "elasticsearch" % ESClientVersion,
     "org.elasticsearch.client" % "transport" % ESClientVersion,
+    "org.elasticsearch" % "elasticsearch" % ESClientVersion,
+    "org.elasticsearch.client" % "elasticsearch-rest-client" % ESClientVersion,
+    "org.elasticsearch.client" % "elasticsearch-rest-high-level-client" % ESClientVersion,
     "org.apache.logging.log4j" % "log4j-api" % "2.9.1",
     "org.apache.logging.log4j" % "log4j-core" % "2.9.1",
     "ch.qos.logback"    %  "logback-classic" % "1.2.3",
     "com.typesafe.scala-logging" %% "scala-logging" % "3.7.2",
+    "org.scalaz" %% "scalaz-core" % "7.2.24",
     "com.github.scopt" %% "scopt" % "3.6.0"
   )
 }
@@ -41,9 +44,10 @@ git.useGitDescribe := true
 
 //http://www.scala-sbt.org/sbt-native-packager/formats/docker.html
 dockerCommands := Seq(
-  Cmd("FROM", "java:8"),
-  Cmd("RUN", "apt", "update"),
-  Cmd("RUN", "apt", "install", "-y", "netcat"),
+  Cmd("FROM", "openjdk:8-jre-alpine"),
+  Cmd("RUN", "apk", "update"),
+  Cmd("RUN", "apk", "add", "bash"),
+  Cmd("RUN", "apk", "add", "curl"),
   Cmd("LABEL", "maintainer=\"Angelo Leto <angelo@getjenny.com>\""),
   Cmd("LABEL", "description=\"Docker container for Manaus NLP services\""),
   Cmd("WORKDIR", "/"),
