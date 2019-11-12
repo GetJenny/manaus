@@ -20,7 +20,8 @@ object CalculateKeywordsForSentencesSimplerFormat {
     output_file: String = "",
     active_potential_decay: Int = 10,
     total_info: Boolean = false,
-    active_potential: Boolean = true
+    active_potential: Boolean = true,
+    compute_bigrams: Boolean = true
   )
 
   def doKeywordExtraction(params: Params): Unit = {
@@ -35,6 +36,7 @@ object CalculateKeywordsForSentencesSimplerFormat {
     val active_potential_decay = params.active_potential_decay
     val active_potential = params.active_potential
     val total_info = params.total_info
+    val compute_bigrams = params.compute_bigrams
 
     println("INFO: getting sentences and observedOccurrences: " + params)
     val (sentences, observedOccurrences) =
@@ -67,10 +69,13 @@ object CalculateKeywordsForSentencesSimplerFormat {
       quote='"',
       escape='\\')
 
-    println("INFO: keywords calculation completed, start with Bigrams")
+    println("INFO: keywords calculation completed")
 
-    val g = Bags(bags.toList.map(x => (x._1,  x._2.map(_._1).toSet )) )
-    println("Bigrams:\n" + g.binomialSignificativeBigrams.filter(_._2 > 20).mkString("\n") )
+    if( compute_bigrams ) {
+      println("INFO: start with Bigrams")
+      val g = Bags(bags.toList.map(x => (x._1, x._2.map(_._1).toSet)))
+      println("Bigrams:\n" + g.binomialSignificativeBigrams.filter(_._2 > 20).mkString("\n"))
+    }
 
   }
 
@@ -118,6 +123,10 @@ object CalculateKeywordsForSentencesSimplerFormat {
         .text(s"weight bags with active potential" +
           s"  default: ${defaultParams.active_potential}")
         .action((x, c) => c.copy(active_potential = x))
+      opt[Boolean]("compute_bigrams")
+        .text(s"compute bigrams" +
+          s"  default: ${defaultParams.compute_bigrams}")
+        .action((x, c) => c.copy(compute_bigrams = x))
     }
 
     parser.parse(args, defaultParams) match {
