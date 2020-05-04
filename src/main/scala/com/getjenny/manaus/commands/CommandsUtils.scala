@@ -83,8 +83,8 @@ object CommandsUtils extends LazyLogging {
 
     // list of tokenized sentences grouped by conversation
     // (sentence, tokenized_sentence, type, conv_id, sentence_id)
-    def sentences = getDataFromCSV(conversations_file, separator).map(line => {
-      val tokenized_sentence = line(1).replaceAll("[^A-Za-z]+", " ").split("\\s+").toList.map(w => w.toLowerCase)
+    def sentences: Stream[(String, List[String])] = getDataFromCSV(conversations_file, separator).map(line => {
+      val tokenized_sentence = line(1).replaceAll("[^A-Za-zÀ-ÿ]+", " ").split("\\s+").toList.map(w => w.toLowerCase)
       (line(0), tokenized_sentence)
     })
 
