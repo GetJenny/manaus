@@ -3,7 +3,7 @@ import com.typesafe.sbt.packager.docker._
 
 name := "manaus"
 
-scalaVersion := "2.12.8"
+scalaVersion := "2.12.10"
 
 resolvers ++= Seq("Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
   Resolver.bintrayRepo("hseeberger", "maven"))
@@ -11,9 +11,9 @@ resolvers ++= Seq("Typesafe Repository" at "http://repo.typesafe.com/typesafe/re
 libraryDependencies ++= {
   val ESClientVersion   = "7.2.0"
   Seq(
-    "org.scalatest" %% "scalatest" % "3.0.1" % "test",
-    "org.scalanlp" %% "breeze" % "0.13",
-    "org.scalanlp" %% "breeze-natives" % "0.13",
+    "org.scalatest" %% "scalatest" % "3.1.1" % "test",
+    "org.scalanlp" %% "breeze" % "1.0",
+    "org.scalanlp" %% "breeze-natives" % "1.0",
     "org.elasticsearch.client" % "transport" % ESClientVersion,
     "org.elasticsearch" % "elasticsearch" % ESClientVersion,
     "org.elasticsearch.client" % "elasticsearch-rest-client" % ESClientVersion,
